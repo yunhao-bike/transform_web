@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF 转 Word 工具</title>
+  <script src="/config.js"></script>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="page">
+    <section class="card">
+      <header class="header">
+        <p class="eyebrow">文件转换工具</p>
+        <h1>PDF 转 Word</h1>
+        <p class="subtitle">上传 PDF，一键转换为 Word 文档并下载到本地</p>
+      </header>
+
+      <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="上传 PDF 文件">
+        <input id="fileInput" type="file" accept=".pdf,application/pdf" hidden />
+        <div class="drop-icon" aria-hidden="true">PDF</div>
+        <p class="drop-title">点击或拖拽 PDF 文件到此处</p>
+        <p class="drop-hint">仅支持 .pdf 格式</p>
+        <p id="fileName" class="file-name">尚未选择文件</p>
+      </div>
+
+      <div class="option-row">
+        <label for="formatSelect">转换格式</label>
+        <select id="formatSelect" disabled>
+          <option value="word" selected>Word (.docx)</option>
+        </select>
+      </div>
+
+      <button id="convertBtn" class="primary-btn" type="button" disabled>开始转换</button>
+
+      <section id="progressPanel" class="progress-panel hidden" aria-live="polite">
+        <div class="progress-block">
+          <div class="progress-label">
+            <span>上传进度</span>
+            <span id="uploadPercent">0%</span>
+          </div>
+          <div class="progress-track">
+            <div id="uploadBar" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="progress-block">
+          <div class="progress-label">
+            <span>转换进度</span>
+            <span id="convertPercent">0%</span>
+          </div>
+          <div class="progress-track">
+            <div id="convertBar" class="progress-fill convert"></div>
+          </div>
+        </div>
+      </section>
+
+      <div id="statusBox" class="status-box hidden" role="status">
+        <span id="statusIcon" class="status-icon" aria-hidden="true">•</span>
+        <p id="statusText"></p>
+      </div>
+
+      <button id="downloadBtn" class="secondary-btn hidden" type="button">下载 Word 文件</button>
+    </section>
+  </main>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>
