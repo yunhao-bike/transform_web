@@ -74,18 +74,12 @@ def convert_pdf_to_word(task_id: str, pdf_path: Path, docx_path: Path) -> None:
 
             update_task(
                 task_id,
-                convert_progress=10,
-                message=f"共 {page_count} 页，开始转换...",
+                convert_progress=15,
+                message=f"共 {page_count} 页，正在转换...",
             )
 
-            for page_index in range(page_count):
-                converter.convert(str(docx_path), start=page_index, end=page_index)
-                progress = 10 + int(((page_index + 1) / page_count) * 85)
-                update_task(
-                    task_id,
-                    convert_progress=progress,
-                    message=f"正在转换第 {page_index + 1}/{page_count} 页...",
-                )
+            # pdf2docx 的 end 为“结束页索引（不含）”，start=end 会导致 0 页被解析
+            converter.convert(str(docx_path))
         finally:
             converter.close()
 
