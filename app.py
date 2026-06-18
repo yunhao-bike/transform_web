@@ -1,4 +1,5 @@
 import threading
+import time
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -24,6 +25,10 @@ OUTPUT_DIR = STORAGE_DIR / "outputs"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# 上传/转换文件保留时长；后台每隔 CLEANUP_INTERVAL_SECONDS 扫描一次
+FILE_RETENTION_MINUTES = 20
+CLEANUP_INTERVAL_SECONDS = 60
+
 app = FastAPI(title="PDF 转 Word 工具")
 
 tasks: dict[str, dict] = {}
@@ -42,13 +47,27 @@ class TaskStatus(BaseModel):
 
 
 def cleanup_old_files() -> None:
-    cutoff = datetime.now() - timedelta(hours=2)
+    cutoff = datetime.now() - timedelta(minutes=FILE_RETENTION_MINUTES)
+    deleted_task_ids: set[str] = set()
+
     for folder in (UPLOAD_DIR, OUTPUT_DIR):
         for path in folder.iterdir():
             if path.is_file():
                 modified = datetime.fromtimestamp(path.stat().st_mtime)
                 if modified < cutoff:
                     path.unlink(missing_ok=True)
+                    deleted_task_ids.add(path.stem)
+
+    if deleted_task_ids:
+        with tasks_lock:
+            for task_id in deleted_task_ids:
+                tasks.pop(task_id, None)
+
+
+def cleanup_loop() -> None:
+    while True:
+        time.sleep(CLEANUP_INTERVAL_SECONDS)
+        cleanup_old_files()
 
 
 def update_task(task_id: str, **fields) -> None:
@@ -105,6 +124,7 @@ def convert_pdf_to_word(task_id: str, pdf_path: Path, docx_path: Path) -> None:
 @app.on_event("startup")
 def on_startup() -> None:
     cleanup_old_files()
+    threading.Thread(target=cleanup_loop, daemon=True).start()
 
 
 @app.get("/api/health")
