@@ -1,3 +1,4 @@
+import json
 import threading
 import time
 import uuid
@@ -21,9 +22,11 @@ STATIC_DIR = BASE_DIR / "static"
 STORAGE_DIR = BASE_DIR / "storage"
 UPLOAD_DIR = STORAGE_DIR / "uploads"
 OUTPUT_DIR = STORAGE_DIR / "outputs"
+TASKS_DIR = STORAGE_DIR / "tasks"
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
 # 上传/转换文件保留时长；后台每隔 CLEANUP_INTERVAL_SECONDS 扫描一次
 FILE_RETENTION_MINUTES = 20
@@ -46,6 +49,40 @@ class TaskStatus(BaseModel):
     error: str | None = None
 
 
+def _task_file(task_id: str) -> Path:
+    return TASKS_DIR / f"{task_id}.json"
+
+
+def _load_task(task_id: str) -> dict | None:
+    with tasks_lock:
+        if task_id in tasks:
+            return dict(tasks[task_id])
+
+    path = _task_file(task_id)
+    if not path.exists():
+        return None
+
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _save_task(task_id: str, data: dict) -> None:
+    with tasks_lock:
+        tasks[task_id] = data
+    _task_file(task_id).write_text(
+        json.dumps(data, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
+def _delete_task(task_id: str) -> None:
+    with tasks_lock:
+        tasks.pop(task_id, None)
+    _task_file(task_id).unlink(missing_ok=True)
+
+
 def cleanup_old_files() -> None:
     cutoff = datetime.now() - timedelta(minutes=FILE_RETENTION_MINUTES)
     deleted_task_ids: set[str] = set()
@@ -59,9 +96,8 @@ def cleanup_old_files() -> None:
                     deleted_task_ids.add(path.stem)
 
     if deleted_task_ids:
-        with tasks_lock:
-            for task_id in deleted_task_ids:
-                tasks.pop(task_id, None)
+        for task_id in deleted_task_ids:
+            _delete_task(task_id)
 
 
 def cleanup_loop() -> None:
@@ -71,9 +107,11 @@ def cleanup_loop() -> None:
 
 
 def update_task(task_id: str, **fields) -> None:
-    with tasks_lock:
-        if task_id in tasks:
-            tasks[task_id].update(fields)
+    task = _load_task(task_id)
+    if not task:
+        return
+    task.update(fields)
+    _save_task(task_id, task)
 
 
 def convert_pdf_to_word(task_id: str, pdf_path: Path, docx_path: Path) -> None:
@@ -158,6 +196,11 @@ async def upload_pdf(file: UploadFile = File(...)) -> dict[str, str]:
             "output_name": None,
             "error": None,
         }
+        task_data = dict(tasks[task_id])
+    _task_file(task_id).write_text(
+        json.dumps(task_data, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
     content = await file.read()
     if not content:
@@ -189,8 +232,7 @@ async def upload_pdf(file: UploadFile = File(...)) -> dict[str, str]:
 
 @app.get("/api/status/{task_id}", response_model=TaskStatus)
 def get_status(task_id: str) -> TaskStatus:
-    with tasks_lock:
-        task = tasks.get(task_id)
+    task = _load_task(task_id)
 
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在或已过期")
@@ -200,8 +242,7 @@ def get_status(task_id: str) -> TaskStatus:
 
 @app.get("/api/download/{task_id}")
 def download_word(task_id: str):
-    with tasks_lock:
-        task = tasks.get(task_id)
+    task = _load_task(task_id)
 
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在或已过期")
